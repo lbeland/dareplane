@@ -13,7 +13,6 @@ def run_server(port: int = 8080, ip: str = "127.0.0.1", loglevel: int = 10, **kw
 
     pcommand_map = {
         "START": partial(run_mockup_streamer_thread, **kwargs),
-        "START_RANDOM": partial(run_mockup_streamer_thread, random_data=True, **kwargs),
     }
 
     logger.debug("Initializing server")

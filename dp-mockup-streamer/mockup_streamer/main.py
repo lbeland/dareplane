@@ -18,6 +18,7 @@ import numpy as np
 import pylsl
 import pyxdf
 from dareplane_utils.general.time import sleep_s
+import time
 from fire import Fire
 
 from mockup_streamer.utils.logging import logger
@@ -227,6 +228,7 @@ class MockupStream:
             self.n_pushed += n_required
 
             if self.buffer_i >= self.buffer.shape[0]:
+                logger.debug("End of data reached, loading next data chunk")
                 self.load_next_data()
 
     def push_markers(self, idx_from: int, idx_to: int):
@@ -470,90 +472,55 @@ def run_stream(
     conf = tomllib.load(open(conf_pth, "rb"))
 
     # Initialize streams as specified - first random streams
-    streams = []
-    for sname, scfg in conf.get("random", {}).items():
-        streams.append(MockupStream(name=sname, cfg=scfg))
-
-    # init streams from files
-    for sname, scfg in conf.get("files", {}).items():
-        files = glob_path_to_path_list(scfg)
-        streams.append(MockupStream(name=sname, cfg=scfg, files=files))
+    sname, scfg = conf.get("random", {}).popitem()
+    stream = MockupStream(name=sname, cfg=scfg)
 
     # collect stream names
-    stream_names = [s.outlet.get_info().name() for s in streams] + [
-        s.outlet_mrk.get_info().name() for s in streams if s.outlet_mrk is not None
-    ]
+    stream_name = stream.outlet.get_info().name()
 
-    logger.debug(f"Initalized {len(stream_names)} streams - {stream_names}")
+    logger.debug(f"Initalized stream - {stream_name}")
 
     # find fastest sampling rate
-    sfastest = max([s.sfreq for s in streams])
-    dt = 1 / sfastest
+    dt = 1 / stream.sfreq
 
-    while not stop_event.is_set():
-        for ms in streams:
-            # push is only sending samples if required as tracked by the
-            # internal sampling frequency
-            ms.push()
+    send_delays = []
+    send_times = []
+    PERIOD_NS = 1_000_000_000 * dt  # in ns
 
-        sleep_s(dt)
-    return 0
+    next_deadline = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+    n_samples = 1000
 
+    for i in range(n_samples):
+        while True:
+            now = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+            if now >= next_deadline:
+                # logger.debug(f"Sending sample {i+1}/{n_samples}")
+                stream.outlet.push_sample([np.uint64(now)])
+                send_times.append(now)
+                send_delays.append(np.uint64(time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)) - now)
+                next_deadline += PERIOD_NS
+                if i==1:
+                    sleep_s(3)
+                break
 
-def run_random(
-    stop_event: threading.Event,
-    n_channels: int = 10,
-    sfreq: int = 100,
-    pre_buffer_s: int = 300,
-    stream_name: str = "mockup_random",
-    markers_t_s: int = 1,
-    marker_values: list = ["a", "b", "c"],
-) -> int:
-    """A simple CLI to spawn an LSL mockup stream with random data
+    print(f"Total messages sent: {len(send_delays)}")
+    send_delays = send_delays[1:]
+    print(f"Average send time (s): {np.mean(send_delays)/1e9:.6f}")
+    print(f"Max send time (s): {np.max(send_delays)/1e9:.6f}, idx: {np.argmax(send_delays)}")
+    print(f"Std send time (s): {np.std(send_delays)/1e9:.6f}")
+    print('\n')
 
-    Parameters
-    ----------
-    stop_event : threading.Event
-        event used to stop the streaming
-    n_channels : int
-        number of channels
+    send_times = np.diff(send_times)
+    print(f"Average send period (s): {np.mean(send_times)/1e9:.6f}")
+    print(f"Max send period (s): {np.max(send_times)/1e9:.6f}, idx: {np.argmax(send_times)}")
+    print(f"Std send period (s): {np.std(send_times)/1e9:.6f}")
 
-    sfreq : int
-        sampling frequency
+    # while not stop_event.is_set():
+    #     # push is only sending samples if required as tracked by the
+    #     # internal sampling frequency
+    #     stream.push()
 
-    pre_buffer_s : int
-        number of samples to be pre-generated, after streaming, another
-        set will be generated
-
-    stream_name : str
-        name of the stream
-
-    markers_t_s : int
-        time interval of markers
-
-    marker_values : list
-        values of markers
-
-    """
-    cfg = dict(
-        sampling_freq=sfreq,
-        n_channels=n_channels,
-        pre_buffer_s=pre_buffer_s,
-        stream_name=stream_name,
-        markers=dict(t_interval_s=markers_t_s, values=marker_values),
-    )
-
-    streamer = MockupStream(name="test", cfg=cfg)
-    dt = 1 / sfreq
-
-    print("=" * 80)
-    print(f"Starting stream: {stream_name}")
-    print("=" * 80)
-
-    while not stop_event.is_set():
-        sleep_s(dt)
-        streamer.push()
-
+    #     sleep_s(dt)
     return 0
 
 
@@ -564,10 +531,8 @@ def run_mockup_streamer_thread(
     """Run the streaming within a separate thread and have a stop_event"""
     stop_event = threading.Event()
 
-    stream_func = run_random if random_data else run_stream
-
     thread = threading.Thread(
-        target=stream_func,
+        target=run_stream,
         kwargs={"stop_event": stop_event, **kwargs},
     )
 

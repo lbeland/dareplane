@@ -3,6 +3,7 @@ import threading
 import numpy as np
 import pylsl
 import tomllib
+import time
 from dareplane_utils.general.time import sleep_s
 from dareplane_utils.stream_watcher.lsl_stream_watcher import (
     StreamWatcher,
@@ -139,29 +140,49 @@ def main(stop_event: threading.Event = threading.Event()):
 
     tlast = pylsl.local_clock()
     th = config["controller"]["threshold"]
+    process_times = []
+    recv_times = []
 
     while not stop_event.is_set():
         sw.update()
-        
-        req_samples = int(
-            config["lsl_outlet"]["nominal_freq_hz"] * (pylsl.local_clock() - tlast)
-        )
 
-        if req_samples > 0 and sw.n_new > 0:
-            tlast = pylsl.local_clock()
-            ufbuffer = sw.unfold_buffer()
-            cval = compute_controller_output(
-                ufbuffer[-sw.n_new :], th=th
-            )
-
-            # push only as many as are required -> rectified downsampling of
-            # nominal_freq_hz < inlet sfreq
-            # logger.debug(f"Pushing: {req_samples=}, {cval=}")
-            for _ in range(req_samples):
-                outlet.push_sample([cval])
+        if sw.n_new > 0:
+            ufbuffer = sw.unfold_buffer()[-sw.n_new :]
+            now = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+            recv_times.append(now)
+            # logger.debug(f"Received sample: {ufbuffer.shape}")
+            process_times.append(now - ufbuffer[-1, 0])
             sw.n_new = 0
 
-            sleep_s(0.9 / config["lsl_outlet"]["nominal_freq_hz"])
+        # req_samples = int(
+        #     config["lsl_outlet"]["nominal_freq_hz"] * (pylsl.local_clock() - tlast)
+        # )
+
+        # if req_samples > 0 and sw.n_new > 0:
+        #     tlast = pylsl.local_clock()
+        #     ufbuffer = sw.unfold_buffer()
+        #     cval = compute_controller_output(
+        #         ufbuffer[-sw.n_new :], th=th
+        #     )
+
+        #     # push only as many as are required -> rectified downsampling of
+        #     # nominal_freq_hz < inlet sfreq
+        #     # logger.debug(f"Pushing: {req_samples=}, {cval=}")
+        #     for _ in range(req_samples):
+        #         outlet.push_sample([cval])
+        #     sw.n_new = 0
+
+        #     sleep_s(0.9 / config["lsl_outlet"]["nominal_freq_hz"])
+    process_times = process_times[1:]     # exclude first measuremnt because of startup delay
+    print(f"Total messages processed: {len(process_times)}")
+    print(f"Average processing time (s): {np.mean(process_times)/1e9:.6f}")
+    print(f"Max processing time (s): {np.max(process_times)/1e9:.6f}, idx: {np.argmax(process_times)}")
+    print(f"Std processing time (s): {np.std(process_times)/1e9:.6f}")
+    print('\n')
+    recv_times = np.diff(recv_times)
+    print(f"Average receive period (s): {np.mean(recv_times)/1e9:.6f}")
+    print(f"Max receive period (s): {np.max(recv_times)/1e9:.6f}, idx: {np.argmax(recv_times)}")
+    print(f"Std receive period (s): {np.std(recv_times)/1e9:.6f}")
 
 
 def get_main_thread() -> tuple[threading.Thread, threading.Event]:
