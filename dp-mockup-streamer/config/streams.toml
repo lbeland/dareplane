@@ -4,15 +4,15 @@
 [random.stream1]
   # at least sampling_freq and n_samples must be specified, else no regular stream will be created. It will still be checked for markers
   stream_name='mock_random1'  # name of the stream
-  sampling_freq=1
+  sampling_freq=5000
   n_channels=1
   pre_buffer_s=300             # number of seconds data is prebuffered for, if not specified, 300s will be buffered
 
-# if markers are specified, they will be sent in given intervals 
-[random.stream1.markers]
-  marker_stream_name='mock_random1'             # if not specified, it will be `stream_name` + '_markers'
-  t_interval_s = 1
-  values = ['a', 'b', 'c']     # list or single string -> will be repeated by cycling through (np.tile)
+# # if markers are specified, they will be sent in given intervals 
+# [random.stream1.markers]
+#   marker_stream_name='mock_random1'             # if not specified, it will be `stream_name` + '_markers'
+#   t_interval_s = 1
+#   values = ['a', 'b', 'c']     # list or single string -> will be repeated by cycling through (np.tile)
 
 # to specify streams from individual files. Currently supported are xdf, BrainVision (.vhdr, .vmrk, .eeg), and .npy files
 # [files]

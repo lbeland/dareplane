@@ -114,6 +114,8 @@ class MockupStream:
         }
         dtype = fmt_map.get(str(self.buffer.dtype), "string")
 
+        print(f"fs of mockstream: {self.sfreq}")
+
         info = pylsl.StreamInfo(
             self.cfg["stream_name"],
             self.cfg.get("stream_type", "EEG"),
@@ -211,6 +213,8 @@ class MockupStream:
         )
         if n_required > 0:
             data = self.buffer[self.buffer_i : self.buffer_i + n_required]
+            # if n_required > 1:
+            #     logger.debug(f"Pushing {data.shape} samples for {self.name}, {data}")
             self.outlet.push_chunk(data)
 
             # if marker stream is associated -> push as well

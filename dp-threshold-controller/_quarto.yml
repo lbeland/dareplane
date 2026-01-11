@@ -1,0 +1,44 @@
+project:
+  type: website
+
+website:
+  sidebar:
+    - id: "main"
+      contents:
+        - section: "Documentation"
+          contents:
+            - reference/index.qmd
+
+quartodoc:
+  package: "threshold_controller" # name of the package
+  source_dir: "threshold_controller" # as the source code is within this folder
+
+  title: "Documentation for the dp-threshold-controller module"
+
+  options:
+    signature_name: full
+
+  # write sidebar where quartodoc writes its content without impacting quarto
+  sidebar:
+    file: "reference/_threshold_controller_sidebar.yml"
+
+  sections:
+    - title: "The threshold-controller module"
+      desc: |
+        :::{.callout-info}
+        This module implements a simple threshold based controller which will read a single scalar 
+        from an LSL stream and broadcast another scalar value to LSL.
+        The github repository for this module is located at:
+        [https://github.com/bsdlab/dp-threshold-controller](https://github.com/bsdlab/dp-threshold-controller)
+        :::
+    - title: "dp-threshold-controller"
+      desc: |
+        :::{.callout-info}
+        Contains the main functionality of the threshold controller.
+        :::
+      contents:
+        - main.main
+        - main.get_main_thread
+        - main.compute_controller_output
+        - main.init_lsl_outlet
+        - main.connect_stream_watcher

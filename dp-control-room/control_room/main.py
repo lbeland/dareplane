@@ -142,7 +142,6 @@ def run_control_room(setup_cfg_path: str = setup_cfg_path):
 
         # start the module servers - spawning the processes
         for conn in connections:
-            print(f"Starting module server for {conn.name=}")
             logger.debug(f"Starting module server for {conn.name=}")
             conn.start_module_server()
 
@@ -150,11 +149,9 @@ def run_control_room(setup_cfg_path: str = setup_cfg_path):
 
         # connect clients to the servers
         for conn in connections:
-            print(f"Starting socket client for {conn.name=}")
             logger.debug(f"Starting socket client for {conn.name=}")
             conn.start_socket_client()
 
-            print(f"Getting PCOMMS for {conn.name=}")
             logger.debug(f"Getting PCOMMS for {conn.name=}")
             # request primary commands
             conn.get_pcommands()
