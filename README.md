@@ -1,5 +1,5 @@
 How to execute:
-- start LSL Labrecorder programm on windows (start of recording is not needed)
+- start LSL Labrecorder programm on windows (start of recording is not needed), only if lsl streams should be stored
 - cd into control_room
 - python3 -m control_room.main
 - configs/mi_experiment.toml is the config file to start all modules
