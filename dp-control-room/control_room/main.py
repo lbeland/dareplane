@@ -37,7 +37,7 @@ except ImportError:
 
 logger.setLevel(10)
 
-setup_cfg_path: Path = Path("./configs/mi_experiment.toml").resolve()
+setup_cfg_path: Path = Path("./configs/benchmark.toml").resolve()
 
 
 def test_dummy(debug: bool = True):

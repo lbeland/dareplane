@@ -4,7 +4,7 @@
 [random.stream1]
   # at least sampling_freq and n_samples must be specified, else no regular stream will be created. It will still be checked for markers
   stream_name='mock_random1'  # name of the stream
-  sampling_freq=5000
+  sampling_freq=1000
   n_channels=1
   pre_buffer_s=300             # number of seconds data is prebuffered for, if not specified, 300s will be buffered
 
