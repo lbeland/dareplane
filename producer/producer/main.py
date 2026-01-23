@@ -196,9 +196,20 @@ def run_stream(
     PERIOD_S = 1/stream.sfreq
     try:
 
-        next_deadline = time.monotonic()
+        
         default_data = np.ones((msg_size, n_channels), dtype=np.float64)
         assert stream.outlet.wait_for_consumers(5), "No consumers connected within 5s"
+
+        # Send one sample that is not counted to initialize the stream
+        if msg_size == 1:
+            data = [1]*n_channels
+            stream.outlet.push_sample(data)
+        else:
+            data = default_data
+            payload = base64.b64encode(data.ravel().astype(np.float32).tobytes()).decode('ascii')
+            stream.outlet.push_sample([payload])
+
+        next_deadline = time.monotonic()
 
         for i in range(n_messages):
             while True:
@@ -217,7 +228,6 @@ def run_stream(
                     # print(f"Producer i: {i}, {data}")
                     break
 
-
     except KeyboardInterrupt:
         print("\n\nShutting down producer...")
     finally:
@@ -228,7 +238,7 @@ def run_stream(
         # print(f"Std send time (s): {np.std(send_delays)/1e9:.6f}")
         # print('\n')
 
-        send_times = send_times[1:]
+        # send_times = send_times[1:]
         send_times_diff = np.diff(send_times)
         print(f"Average send period (s): {np.mean(send_times_diff):.6f}")
         print(f"Max send period (s): {np.max(send_times_diff):.6f}, idx: {np.argmax(send_times_diff)}")

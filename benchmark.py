@@ -15,7 +15,7 @@ CONSUMER_ROOT = REPO_ROOT / "consumer"
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_messages", type=int, default=1000)
-    parser.add_argument("--freq", type=int, default=10000)
+    parser.add_argument("--freq", type=int, default=1000)
     parser.add_argument("--msg_size", type=int, default=1)
     parser.add_argument("--num_channels", type=int, default=1)
     parser.add_argument("--output_file", type=str, default="send_times.csv")
@@ -25,6 +25,8 @@ def main():
 
     # 1) Start consumer first
     output_path = REPO_ROOT / "results" / f"{args.freq}_{args.num_channels}_{args.msg_size}_recv_times.csv"
+    if os.path.exists(output_path):
+        return  # Skip if already exists
     consumer = subprocess.Popen(
         [
             "python3",

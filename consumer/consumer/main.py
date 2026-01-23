@@ -142,7 +142,8 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
     recv_times = []
     counter = 0
     try:
-        while counter < n_messages:
+        # Receive one sample that is not counted to initialize the stream      
+        while counter < n_messages + 1:
             sw.update()
 
             if sw.n_new > 0:
