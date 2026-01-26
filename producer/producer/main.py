@@ -18,7 +18,6 @@ import pylsl
 from dareplane_utils.general.time import sleep_s
 import time
 from fire import Fire
-import base64
 
 from producer.utils.logging import logger
 
@@ -68,7 +67,7 @@ class MockupStream:
         self.file_i = 0
         self.outlet = None
         self.sfreq = cfg["sampling_freq"]
-        self.num_channels = cfg.get("n_channels", 1) if cfg["msg_size"] == 1 else 1
+        self.num_channels = cfg.get("n_channels", 1)
         self.buffer = None
 
         # LSL - init after first data is loaded, as sfreq might be derived
@@ -93,10 +92,7 @@ class MockupStream:
             "int8": pylsl.cf_int8,
             "int64": pylsl.cf_int64,
         }
-        if self.cfg["msg_size"] == 1:
-            dtype = fmt_map.get(self.cfg.get("data_type", "float64"), "float64")
-        else:
-            dtype = fmt_map.get(self.cfg.get("data_type", "string"), "string")
+        dtype = fmt_map.get(self.cfg.get("data_type", "float64"), "float64")
 
         print(f"fs of mockstream: {self.sfreq}, dtype: {dtype}")
 
@@ -110,31 +106,6 @@ class MockupStream:
 
         self.info = info
         self.outlet = pylsl.StreamOutlet(self.info)
-
-    def push(self):
-
-        n_required = (
-            int((pylsl.local_clock() - self.t_start_s) * self.sfreq) - self.n_pushed
-        )
-        if n_required > 0:
-            data = self.buffer[self.buffer_i : self.buffer_i + n_required]
-            # if n_required > 1:
-            #     logger.debug(f"Pushing {data.shape} samples for {self.name}, {data}")
-            self.outlet.push_chunk(data)
-
-            # if marker stream is associated -> push as well
-            if self.outlet_mrk is not None:
-                self.push_markers(
-                    idx_from=self.n_pushed, idx_to=self.n_pushed + n_required
-                )
-
-            self.buffer_i += n_required
-            self.n_pushed += n_required
-
-            if self.buffer_i >= self.buffer.shape[0]:
-                logger.debug("End of data reached, loading next data chunk")
-                self.load_next_data()
-
 
 
 def run_stream(
@@ -188,26 +159,16 @@ def run_stream(
 
     logger.debug(f"Initalized stream - {stream_name}")
 
-    # find fastest sampling rate
-    dt = 1 / stream.sfreq
-
     send_delays = []
     send_times = []
     PERIOD_S = 1/stream.sfreq
     try:
 
-        
-        default_data = np.ones((msg_size, n_channels), dtype=np.float64)
+        default_data = np.ones((msg_size,n_channels), dtype=np.float64)
         assert stream.outlet.wait_for_consumers(5), "No consumers connected within 5s"
 
         # Send one sample that is not counted to initialize the stream
-        if msg_size == 1:
-            data = [1]*n_channels
-            stream.outlet.push_sample(data)
-        else:
-            data = default_data
-            payload = base64.b64encode(data.ravel().astype(np.float32).tobytes()).decode('ascii')
-            stream.outlet.push_sample([payload])
+        stream.outlet.push_chunk(default_data)
 
         next_deadline = time.monotonic()
 
@@ -215,13 +176,11 @@ def run_stream(
             while True:
                 now = time.monotonic()
                 if now >= next_deadline:
-                    if msg_size == 1:
-                        data = [now]*n_channels
-                        stream.outlet.push_sample(data)
-                    else:
-                        data = default_data * now
-                        payload = base64.b64encode(data.ravel().astype(np.float32).tobytes()).decode('ascii')
-                        stream.outlet.push_sample([payload])
+                    data = default_data*now
+                    # print(f"Pushing data: {data}, {data.shape}")
+                    stream.outlet.push_chunk(data)
+                    # print(f"Producer i: {i}, pushed chunk at time: {now}")
+
                     send_times.append(now)
                     # send_delays.append(np.float64(time.monotonic()) - now)
                     next_deadline += PERIOD_S

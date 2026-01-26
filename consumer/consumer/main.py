@@ -15,46 +15,6 @@ from consumer.utils.logging import logger
 import base64
 
 
-def init_lsl_outlet(cfg: dict) -> pylsl.StreamOutlet:
-    """
-    Initialize an LSL (Lab Streaming Layer) outlet for threshold controller output.
-
-    This function creates an LSL outlet that streams threshold controller decisions
-    as a single-channel stream.
-
-    Parameters
-    ----------
-    cfg : dict
-        Configuration dictionary containing LSL outlet settings. Must include
-        an "lsl_outlet" key with name, type, nominal_freq_hz, and format fields.
-
-    Returns
-    -------
-    pylsl.StreamOutlet
-        The LSL outlet for streaming the controller output.
-    """
-    n_channels = 1
-    info = pylsl.StreamInfo(
-        cfg["lsl_outlet"]["name"],
-        cfg["lsl_outlet"]["type"],
-        n_channels,
-        cfg["lsl_outlet"]["nominal_freq_hz"],
-        cfg["lsl_outlet"]["format"],
-    )
-
-    # enrich a channel name
-    chns = info.desc().append_child("channels")
-    ch = chns.append_child("channel")
-    ch.append_child_value("label", "control_decoding")
-    ch.append_child_value("unit", "AU")
-    ch.append_child_value("type", "controller_output")
-    ch.append_child_value("scaling_factor", "1")
-
-    outlet = pylsl.StreamOutlet(info)
-
-    return outlet
-
-
 def connect_stream_watcher(config: dict) -> StreamWatcher:
     """
     Connect to and configure the input stream watcher.
@@ -91,34 +51,6 @@ def connect_stream_watcher(config: dict) -> StreamWatcher:
     return sw
 
 
-def compute_controller_output(inp: np.ndarray, th: float = 10_000) -> int:
-    """
-    Compute the output of the controller.
-
-    This function applies a simple threshold-based decision rule to the input signal.
-    If the most recent sample exceeds the threshold, it returns a high control value,
-    otherwise a low control value. This is a placeholder for more complex
-    decision-making logic that could be implemented in a real controller.
-
-    Parameters
-    ----------
-    inp : np.ndarray
-        Input signal array. The threshold comparison is applied to the last sample.
-    th : float, default=10_000
-        Threshold value for the decision boundary.
-
-    Returns
-    -------
-    int
-        Controller output: 150 if threshold exceeded, 10 otherwise.
-    """
-    # logger.debug(f"ThresholdController got Sample {inp}")
-    if np.mean(inp) > th:
-        return 150
-    else:
-        return 10
-
-
 def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_size=1, n_channels=1,output_file=""):
     """
     Main processing loop for the threshold controller.
@@ -141,29 +73,20 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
     process_times = []
     recv_times = []
     counter = 0
+    chunk_counter = 0
     try:
         # Receive one sample that is not counted to initialize the stream      
         while counter < n_messages + 1:
-            sw.update()
-
-            if sw.n_new > 0:
-                # Receive message
-                ufbuffer = sw.unfold_buffer()[-sw.n_new :]
-                # print(f"Received: {data}")
-                for sample in ufbuffer:
+            samples, _ = sw.inlet.pull_chunk(max_samples=msg_size)
+            if samples:
+                chunk_counter += len(samples)
+                if chunk_counter == msg_size:
                     now = time.monotonic()
+                    chunk_counter = 0
                     recv_times.append(now)
-
-                    if msg_size == 1:
-                        data = sample[0]
-                        process_times.append(now - data)
-                    else:
-                        raw = base64.b64decode(sample[0])
-                        arrays = np.frombuffer(raw, dtype=np.float32).reshape((msg_size, n_channels))
-                        process_times.append(now -  arrays[0,0])
-                    # print(f"timestamp: {now}, Consumer i: {counter}, {data}")
-                    counter += 1
-                sw.n_new = 0
+                    data = samples[0][0]
+                    process_times.append(now - data)
+                    counter+=1
     
     except KeyboardInterrupt:
         print("\n\nShutting down consumer...")
