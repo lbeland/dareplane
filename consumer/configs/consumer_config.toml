@@ -4,5 +4,5 @@ buffer_size_s = 10
 [lsl_outlet]
 name="control_signal"
 nominal_freq_hz = "derive" # either a float or "derive" -> take same as input
-format = "float32"
+format = "float64"
 type="control_signal"

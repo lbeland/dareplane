@@ -77,16 +77,22 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
     try:
         # Receive one sample that is not counted to initialize the stream      
         while counter < n_messages + 1:
-            samples, _ = sw.inlet.pull_chunk(max_samples=msg_size)
-            if samples:
-                chunk_counter += len(samples)
-                if chunk_counter == msg_size:
-                    now = time.monotonic()
-                    chunk_counter = 0
-                    recv_times.append(now)
-                    data = samples[0][0]
-                    process_times.append(now - data)
-                    counter+=1
+            sw.update()
+
+            if sw.n_new > 0:
+                # Receive message
+                ufbuffer = sw.unfold_buffer()[-sw.n_new :]
+                # print(f"Received: {data}")
+                for sample in ufbuffer:
+                    chunk_counter += 1
+                    if chunk_counter == msg_size:
+                        now = time.monotonic()
+                        chunk_counter = 0
+                        recv_times.append(now)
+                        data = sample[0]
+                        process_times.append(now - data)
+                        counter+=1
+                sw.n_new = 0
     
     except KeyboardInterrupt:
         print("\n\nShutting down consumer...")

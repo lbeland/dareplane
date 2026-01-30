@@ -169,6 +169,7 @@ def run_stream(
 
         # Send one sample that is not counted to initialize the stream
         stream.outlet.push_chunk(default_data)
+        time.sleep(0.5)
 
         next_deadline = time.monotonic()
 
