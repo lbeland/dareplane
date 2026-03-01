@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent
-PRODUCER_ROOT = REPO_ROOT / "producer"
-CONSUMER_ROOT = REPO_ROOT / "consumer"
+PRODUCER_ROOT = REPO_ROOT / "c-producer"
+CONSUMER_ROOT = REPO_ROOT / "c-consumer"
 
 
 def main():
@@ -27,9 +27,7 @@ def main():
     output_path = REPO_ROOT / "results" / f"{args.freq}_{args.num_channels}_{args.msg_size}_recv_times.csv"
     consumer = subprocess.Popen(
         [
-            "python3",
-            "-m",
-            "consumer.main",
+            str(CONSUMER_ROOT / "bin" / "consumer"),
             f"--n_messages={args.n_messages}",
             f"--n_channels={args.num_channels}",
             f"--msg_size={args.msg_size}",
@@ -45,9 +43,7 @@ def main():
     output_path = REPO_ROOT / "results" / f"{args.freq}_{args.num_channels}_{args.msg_size}_send_times.csv"
     producer = subprocess.Popen(
         [
-            "python3",
-            "-m",
-            "producer.main",
+            str(PRODUCER_ROOT / "bin" / "producer"),
             f"--n_messages={args.n_messages}",
             f"--freq={args.freq}",
             f"--n_channels={args.num_channels}",
