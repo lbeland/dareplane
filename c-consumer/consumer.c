@@ -3,7 +3,7 @@
  * Based on the dareplane Python consumer but implemented in C for higher throughput
  */
 
-#include "../dp-c-sdl2-example/include/lsl_c.h"
+#include "include/lsl_c.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

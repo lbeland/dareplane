@@ -25,9 +25,12 @@ def main():
 
     # 1) Start consumer first
     output_path = REPO_ROOT / "results" / f"{args.freq}_{args.num_channels}_{args.msg_size}_recv_times.csv"
+    if os.path.exists(output_path):
+        return
+
     consumer = subprocess.Popen(
         [
-            str(CONSUMER_ROOT / "bin" / "consumer"),
+            str(CONSUMER_ROOT / "bin" / "consumer.bin"),
             f"--n_messages={args.n_messages}",
             f"--n_channels={args.num_channels}",
             f"--msg_size={args.msg_size}",
@@ -43,7 +46,7 @@ def main():
     output_path = REPO_ROOT / "results" / f"{args.freq}_{args.num_channels}_{args.msg_size}_send_times.csv"
     producer = subprocess.Popen(
         [
-            str(PRODUCER_ROOT / "bin" / "producer"),
+            str(PRODUCER_ROOT / "bin" / "producer.bin"),
             f"--n_messages={args.n_messages}",
             f"--freq={args.freq}",
             f"--n_channels={args.num_channels}",

@@ -3,7 +3,7 @@
  * Based on the dareplane Python producer but implemented in C for higher throughput
  */
 
-#include "../dp-c-sdl2-example/include/lsl_c.h"
+#include "include/lsl_c.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -188,11 +188,11 @@ int main(int argc, char *argv[]) {
         // Update deadline for next sample
         next_deadline += period_s;
         
-        // Progress indicator
-        if ((i + 1) % 100 == 0) {
-            printf("Sent %d/%d messages\r", i + 1, n_messages);
-            fflush(stdout);
-        }
+        // // Progress indicator
+        // if ((i + 1) % 100 == 0) {
+        //     printf("Sent %d/%d messages\r", i + 1, n_messages);
+        //     fflush(stdout);
+        // }
     }
     
     printf("\nTransmission complete. Waiting for consumers to disconnect...\n");
