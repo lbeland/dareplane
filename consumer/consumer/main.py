@@ -4,24 +4,17 @@ import numpy as np
 import pylsl
 import tomllib
 import time
-from dareplane_utils.general.time import sleep_s
-from dareplane_utils.stream_watcher.lsl_stream_watcher import (
-    StreamWatcher,
-    pylsl_xmlelement_to_dict,
-)
+import pandas as pd
 from fire import Fire
 
 from consumer.utils.logging import logger
-import base64
 
 
-def connect_stream_watcher(config: dict) -> StreamWatcher:
+def connect_inlet(config: dict) -> pylsl.StreamInlet:
     """
-    Connect to and configure the input stream watcher.
+    Resolve and connect to an input LSL stream.
 
-    This function initializes a StreamWatcher to monitor an input LSL stream.
-    If the outlet frequency is set to "derive", the frequency is set equal to the
-    nominal sampling rate of the input stream.
+    This function resolves a stream by name and initializes a native pylsl StreamInlet.
 
     Parameters
     ----------
@@ -30,35 +23,31 @@ def connect_stream_watcher(config: dict) -> StreamWatcher:
 
     Returns
     -------
-    StreamWatcher
-        Connected StreamWatcher instance ready for data monitoring.
+    pylsl.StreamInlet
+        Connected StreamInlet instance ready for data monitoring.
     """
-    sw = StreamWatcher(
-        config["stream_to_query"]["stream"],
-        buffer_size_s=config["stream_to_query"]["buffer_size_s"],
-    )
-    sw.connect_to_stream()
-    logger.debug(f"Connected to stream: {config['stream_to_query']['stream']}")
+    stream_name = config["stream_to_query"]["stream"]
+    buffer_size_s = config["stream_to_query"].get("buffer_size_s", 360)
 
-    # if the outlet config is to be derived, calc from here
-    if config["lsl_outlet"]["nominal_freq_hz"] == "derive":
-        inlet_info = pylsl_xmlelement_to_dict(sw.inlet.info())
-        config["lsl_outlet"]["nominal_freq_hz"] = float(
-            inlet_info["info"]["nominal_srate"]
-        )
-        logger.debug(f"Derived outlet nominal_freq_hz: {config['lsl_outlet']['nominal_freq_hz']}")
+    streams = pylsl.resolve_byprop("name", stream_name, timeout=5)
+    if not streams:
+        raise RuntimeError(f"Could not resolve LSL stream with name '{stream_name}'")
 
-    return sw
+    inlet = pylsl.StreamInlet(streams[0], max_buflen=buffer_size_s)
+    inlet.open_stream(timeout=5)
+    logger.debug(f"Connected to stream: {stream_name}")
+
+    return inlet
 
 
-def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_size=1, n_channels=1,output_file=""):
+def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_size=1, output_file=""):
     """
-    Main processing loop for the threshold controller.
+    Main processing loop for the consumer.
 
-    This function implements the main real-time processing loop for the threshold
-    controller. It connects to an input LSL stream, applies threshold-based decisions
-    to the incoming data, and streams the control outputs via an LSL outlet.
-    The configuration is loaded from "./configs/threshold_controller_config.toml".
+    This function implements the main real-time processing loop for the consumer.
+    It connects to an input LSL stream, receives and processes data, and writes
+    timing results to a CSV file.
+    The configuration is loaded from "./configs/consumer_config.toml".
 
     Parameters
     ----------
@@ -68,52 +57,68 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
     """
     logger.setLevel(10)
     config = tomllib.load(open("./configs/consumer_config.toml", "rb"))
-    sw = connect_stream_watcher(config)
+    inlet = connect_inlet(config)
 
     process_times = []
     recv_times = []
     counter = 0
     chunk_counter = 0
+    first_timestamp = None
     try:
-        # Receive one sample that is not counted to initialize the stream      
-        while counter < n_messages + 1:
-            sw.update()
+        # Warmup loop - receive 500 samples before actual measurements
+        while counter < 500 and not stop_event.is_set():
+            sample, _ = inlet.pull_chunk(timeout=pylsl.FOREVER, max_samples=msg_size)
+            counter += 1
 
-            if sw.n_new > 0:
-                # Receive message
-                ufbuffer = sw.unfold_buffer()[-sw.n_new :]
-                # print(f"Received: {data}")
-                for sample in ufbuffer:
-                    chunk_counter += 1
-                    if chunk_counter == msg_size:
-                        now = time.monotonic()
-                        chunk_counter = 0
-                        recv_times.append(now)
-                        data = sample[0]
-                        process_times.append(now - data)
-                        counter+=1
-                sw.n_new = 0
+        # Reset counter for actual measurement
+        counter = 0
+
+        while counter < n_messages and not stop_event.is_set():
+            sample, _ = inlet.pull_chunk(timeout=pylsl.FOREVER, max_samples=msg_size)
+            now = time.monotonic()
+            recv_times.append(now)
+            data = sample[0][0]  # Extract the first element of the first sample
+            if first_timestamp is None:
+                first_timestamp = data
+            process_times.append(now - data)
+            counter += 1
+            # print(f"Received message {counter}/{n_messages}")
     
     except KeyboardInterrupt:
         print("\n\nShutting down consumer...")
-    
+    except Exception as e:
+        raise
     finally:
+        if len(recv_times) == 0:
+            print("No messages received. Exiting without writing results.")
+            inlet.close_stream()
+            return
+        
         print(f"Total messages processed: {len(process_times)}")
-        process_times = process_times[1:]     # exclude first measuremnt because of startup delay
-        # print(f"Average processing time (s): {np.mean(process_times)/1e9:.6f}")
-        # print(f"Max processing time (s): {np.max(process_times)/1e9:.6f}, idx: {np.argmax(process_times)}")
-        # print(f"Std processing time (s): {np.std(process_times)/1e9:.6f}")
-        # print('\n')
-        recv_times = recv_times[1:]
-        recv_times_diff = np.diff(recv_times)
-        print(f"Average receive period (s): {np.mean(recv_times_diff):.6f}")
-        print(f"Max receive period (s): {np.max(recv_times_diff):.6f}, idx: {np.argmax(recv_times_diff)}")
-        print(f"Std receive period (s): {np.std(recv_times_diff):.6f}")
 
-        save = np.vstack((recv_times, process_times, np.append(recv_times_diff, 0)))
-        np.savetxt(output_file, save.T, delimiter=',', header='recv_time,latency,recv_period')
-        sw.inlet.close_stream()
-        sw.disconnect()
+        recv_times_diff = np.diff(recv_times)
+        mean_recv_period = np.mean(recv_times_diff)*1e6
+        std_recv_period = np.std(recv_times_diff)*1e6
+        max_recv_period = np.max(recv_times_diff)*1e6
+
+        print(f"Average receive period (us): {mean_recv_period:.4f}")
+        print(f"Max receive period (us): {max_recv_period:.4f}, idx: {np.argmax(recv_times_diff)}")
+        print(f"Std receive period (us): {std_recv_period:.4f}")
+
+        mean_latency = np.mean(process_times)*1e6
+        std_latency = np.std(process_times)*1e6
+        max_latency = np.max(process_times)*1e6
+
+        throughput = n_messages / (recv_times[-1] - first_timestamp)/1e3
+        print(f"Throughput (msg/ms): {n_messages}/{(recv_times[-1] - first_timestamp)*1e3:.4f}ms={throughput:.2f}")
+
+        results = pd.DataFrame({"Metric":["mean", "std", "max"],
+                                "Recv_period": [mean_recv_period, std_recv_period, max_recv_period], 
+                                "Latency": [mean_latency, std_latency, max_latency], 
+                                "Throughput": [throughput, None, None]})
+
+        results.to_csv(output_file, index=False)
+        inlet.close_stream()
         print("Consumer stopped.")
 
 

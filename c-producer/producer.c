@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
+#include <getopt.h>
 #include <signal.h>
 #include <unistd.h>
 
@@ -20,7 +22,6 @@ static char output_file[256] = "send_times.csv";
 
 // Timing storage
 static double *send_times = NULL;
-static int send_count = 0;
 
 // Signal handling for clean shutdown
 static volatile int keep_running = 1;
@@ -37,84 +38,86 @@ double get_monotonic_time() {
     return ts.tv_sec + ts.tv_nsec / 1e9;
 }
 
-// Precise sleep until target time
-void sleep_until(double target_time) {
-    double now;
-    struct timespec ts;
-    
-    // Busy-wait for last microseconds for better precision
-    while ((now = get_monotonic_time()) < target_time) {
-        if (target_time - now > 0.001) {  // More than 1ms away
-            ts.tv_sec = 0;
-            ts.tv_nsec = (long)((target_time - now - 0.0005) * 1e9);
-            nanosleep(&ts, NULL);
+void save_results() {
+    printf("Total messages sent: %d\n", n_messages);
+
+    // Calculate statistics (skip first measurement)
+    double sum_diff = 0.0;
+    double max_diff = 0.0;
+    int max_idx = 0;
+    double sum_sq_diff = 0.0;
+    double *send_times_diff = (double *)malloc((n_messages - 1) * sizeof(double));
+
+    for (int i = 0; i < n_messages-1; i++) {
+        double diff = send_times[i+1] - send_times[i];
+        send_times_diff[i] = diff;
+        sum_diff += diff;
+        sum_sq_diff += diff * diff;
+        if (diff > max_diff) {
+            max_diff = diff;
+            max_idx = i;
         }
     }
-}
 
-void save_results() {
+    double avg_period_sec = sum_diff / (n_messages - 1);
+    double avg_period = avg_period_sec * 1e6;  // us
+    double variance = (sum_sq_diff / (n_messages - 1)) - (avg_period_sec * avg_period_sec);  // s²
+    double std_period = sqrt(fmax(0.0, variance)) * 1e6;  // us
+
+    printf("Average send period (us): %.6f\n", avg_period);
+    printf("Max send period (us): %.6f, idx: %d\n", max_diff * 1e6, max_idx);
+    printf("Std send period (us): %.6f\n", std_period);
+
+    // Save to CSV
     FILE *fp = fopen(output_file, "w");
-    if (!fp) {
-        fprintf(stderr, "Error opening output file: %s\n", output_file);
+    if (fp == NULL) {
+        fprintf(stderr, "Error opening file %s\n", output_file);
         return;
     }
-    
-    fprintf(fp, "send_time,send_period\n");
-    for (int i = 0; i < send_count; i++) {
-        double period = (i < send_count - 1) ? (send_times[i+1] - send_times[i]) : 0.0;
-        fprintf(fp, "%.9f,%.9f\n", send_times[i], period);
-    }
+
+    fprintf(fp, "Metric,Send_period\n");
+    fprintf(fp, "mean,%.6f\n", avg_period);
+    fprintf(fp, "std,%.6f\n", std_period);
+    fprintf(fp, "max,%.6f\n", max_diff * 1e6);
+
     fclose(fp);
-    
-    // Print statistics (excluding first sample)
-    if (send_count > 1) {
-        double sum = 0.0, sum_sq = 0.0, max_period = 0.0;
-        int max_idx = 0;
-        
-        for (int i = 1; i < send_count - 1; i++) {
-            double period = send_times[i+1] - send_times[i];
-            sum += period;
-            sum_sq += period * period;
-            if (period > max_period) {
-                max_period = period;
-                max_idx = i;
-            }
-        }
-        
-        int n = send_count - 2;
-        double mean = sum / n;
-        double variance = (sum_sq / n) - (mean * mean);
-        double std = sqrt(variance);
-        
-        printf("\n=== Producer Statistics ===\n");
-        printf("Total messages sent: %d\n", send_count);
-        printf("Average send period (s): %.6f\n", mean);
-        printf("Max send period (s): %.6f, idx: %d\n", max_period, max_idx);
-        printf("Std send period (s): %.6f\n", std);
-    }
+    free(send_times_diff);
 }
 
 void parse_args(int argc, char *argv[]) {
-    for (int i = 1; i < argc; i++) {
-        if (strncmp(argv[i], "--n_messages=", 13) == 0) {
-            n_messages = atoi(argv[i] + 13);
-        } else if (strncmp(argv[i], "--freq=", 7) == 0) {
-            freq = atof(argv[i] + 7);
-        } else if (strncmp(argv[i], "--n_channels=", 13) == 0) {
-            n_channels = atoi(argv[i] + 13);
-        } else if (strncmp(argv[i], "--msg_size=", 11) == 0) {
-            msg_size = atoi(argv[i] + 11);
-        } else if (strncmp(argv[i], "--output_file=", 14) == 0) {
-            strncpy(output_file, argv[i] + 14, sizeof(output_file) - 1);
+    // Parse command-line arguments
+    int opt;
+    static const struct option long_options[] = {
+        { "n_messages", required_argument, 0, 'n' },
+        { "msg_size", required_argument, 0, 'm' },
+        { "num_channels", required_argument, 0, 'c' },
+        { "output_file", required_argument, 0, 'o' },
+        0
+    };
+    while ((opt = getopt_long(argc, argv, "n:m:c:o:", long_options, NULL)) != -1) {
+        switch (opt) {
+            case 'n':
+                n_messages = atoi(optarg);
+                break;
+            case 'm':
+                msg_size = atoi(optarg);
+                break;
+            case 'c':
+                n_channels = atoi(optarg);
+                break;
+            case 'o':
+                strncpy(output_file, optarg, sizeof(output_file) - 1);
+                output_file[sizeof(output_file) - 1] = '\0';
+                break;
+            default:
+                fprintf(stderr, "Usage: %s [options]\n", argv[0]);
+                fprintf(stderr, "  -n n_messages (default: 1000)\n");
+                fprintf(stderr, "  -m msg_size (default: 1)\n");
+                fprintf(stderr, "  -c num_channels (default: 1)\n");
+                fprintf(stderr, "  -o output_file (default: send_times.csv)\n");
+                return;
         }
     }
-    
-    printf("Configuration:\n");
-    printf("  n_messages: %d\n", n_messages);
-    printf("  freq: %.1f Hz\n", freq);
-    printf("  n_channels: %d\n", n_channels);
-    printf("  msg_size: %d\n", msg_size);
-    printf("  output_file: %s\n", output_file);
 }
 
 int main(int argc, char *argv[]) {
@@ -128,8 +131,8 @@ int main(int argc, char *argv[]) {
     // Allocate timing storage
     send_times = (double *)malloc(n_messages * sizeof(double));
     if (!send_times) {
-        fprintf(stderr, "Failed to allocate memory for send_times\n");
-        return EXIT_FAILURE;
+        fprintf(stderr, "Memory allocation failed\n");
+        return 1;
     }
     
     // Create LSL outlet
@@ -151,63 +154,51 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "No consumers connected within 5 seconds\n");
         lsl_destroy_outlet(outlet);
         free(send_times);
-        return EXIT_FAILURE;
+        return 1;
     }
     
     printf("Consumer connected. Starting data transmission...\n");
     
-    // Allocate data buffer
-    double *data = (double *)malloc(n_channels * sizeof(double));
-    if (!data) {
-        fprintf(stderr, "Failed to allocate memory for data\n");
+    // Calculate total data size for msg_size samples with n_channels each
+    int chunk_size = msg_size * n_channels;
+    double *chunk_data = (double *)malloc(chunk_size * sizeof(double));
+    double now;
+    if (!chunk_data) {
+        fprintf(stderr, "Memory allocation failed\n");
         lsl_destroy_outlet(outlet);
         free(send_times);
-        return EXIT_FAILURE;
+        return 1;
+    }
+    
+    // Warmup
+    for (int i = 0; i < 500; i++) {
+        now = get_monotonic_time();
+        // Fill chunk with current timestamp
+        for (int j = 0; j < chunk_size; j++) {
+            chunk_data[j] = now;
+        }
+        lsl_push_chunk_d(outlet, chunk_data, chunk_size);
     }
     
     // Main transmission loop
-    double period_s = 1.0 / freq;
-    double next_deadline = get_monotonic_time();
-    
     for (int i = 0; i < n_messages && keep_running; i++) {
-        // Wait for next deadline
-        sleep_until(next_deadline);
-        
-        // Get timestamp and fill data with it
-        double now = get_monotonic_time();
-        for (int ch = 0; ch < n_channels; ch++) {
-            data[ch] = now;
+        now = get_monotonic_time();
+        // Fill chunk with current timestamp
+        for (int j = 0; j < chunk_size; j++) {
+            chunk_data[j] = now;
         }
-        
-        // Send data via LSL
-        lsl_push_sample_d(outlet, data);
-        
-        // Record send time
-        send_times[send_count++] = now;
-        
-        // Update deadline for next sample
-        next_deadline += period_s;
-        
-        // // Progress indicator
-        // if ((i + 1) % 100 == 0) {
-        //     printf("Sent %d/%d messages\r", i + 1, n_messages);
-        //     fflush(stdout);
-        // }
+        lsl_push_chunk_d(outlet, chunk_data, chunk_size);
+        send_times[i] = now;
     }
-    
-    printf("\nTransmission complete. Waiting for consumers to disconnect...\n");
-    
-    // Give consumer time to receive last samples
-    sleep(1);
-    
+    sleep(2);
     // Cleanup
-    free(data);
     lsl_destroy_outlet(outlet);
+    free(chunk_data);
     
     // Save results
     save_results();
     free(send_times);
     
-    printf("Producer finished.\n");
-    return EXIT_SUCCESS;
+    printf("Producer stopped.\n");
+    return 0;
 }

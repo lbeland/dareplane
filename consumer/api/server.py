@@ -13,7 +13,7 @@ def main(port: int = 8080, ip: str = "127.0.0.1", loglevel: int = 10):
         port,
         ip=ip,
         pcommand_map=pcommand_map,
-        name="threshold_controller_server",
+        name="consumer_server",
     )
 
     # initialize to start the socket

@@ -17,6 +17,7 @@ import numpy as np
 import pylsl
 from dareplane_utils.general.time import sleep_s
 import time
+import pandas as pd
 from fire import Fire
 
 from producer.utils.logging import logger
@@ -112,7 +113,6 @@ def run_stream(
     stop_event: threading.Event = threading.Event(),
     conf_pth: Path = Path("./config/streams.toml"),
     n_messages: int = None,
-    freq: float = None,
     n_channels: int = None,
     msg_size: int=None,
     output_file: str = "send_times.csv",
@@ -124,12 +124,12 @@ def run_stream(
         event used to stop the streaming
     conf_pth : Path
         Path to config file
-    n_samples : int, optional
-        Number of samples to send (overrides config)
-    freq : float, optional
-        Sampling frequency in Hz (overrides config)
+    n_messages : int, optional
+        Number of messages to send (overrides config)
     n_channels : int, optional
         Number of channels (overrides config)
+    msg_size : int, optional
+        Size of each message in samples (overrides config)
 
     Returns
     -------
@@ -144,13 +144,10 @@ def run_stream(
     sname, scfg = conf.get("random", {}).popitem()
     
     # Override config with provided parameters
-    if freq is not None:
-        scfg["sampling_freq"] = freq
     if n_channels is not None:
         scfg["n_channels"] = n_channels
     if msg_size is not None:
         scfg["msg_size"] = msg_size
-
 
     stream = MockupStream(name=sname, cfg=scfg)
 
@@ -159,52 +156,43 @@ def run_stream(
 
     logger.debug(f"Initalized stream - {stream_name}")
 
-    send_delays = []
     send_times = []
-    PERIOD_S = 1/stream.sfreq
     try:
 
         default_data = np.ones((msg_size,n_channels), dtype=np.float64)
         assert stream.outlet.wait_for_consumers(5), "No consumers connected within 5s"
 
-        # Send one sample that is not counted to initialize the stream
-        stream.outlet.push_chunk(default_data)
-        time.sleep(0.5)
-
-        next_deadline = time.monotonic()
+        # Warmup loop to stabilize the stream before measurements
+        counter = 0
+        for i in range(500):
+            now = time.monotonic()
+            stream.outlet.push_chunk(default_data*now)
+            counter += 1
+        
+        time.sleep(0.1)
 
         for i in range(n_messages):
-            while True:
-                now = time.monotonic()
-                if now >= next_deadline:
-                    data = default_data*now
-                    # print(f"Pushing data: {data}, {data.shape}")
-                    stream.outlet.push_chunk(data)
-                    # print(f"Producer i: {i}, pushed chunk at time: {now}")
+            now = time.monotonic()
+            stream.outlet.push_chunk(default_data * now)
+            send_times.append(now)
+            # print(f"Sent message {i+1}/{n_messages}")
 
-                    send_times.append(now)
-                    # send_delays.append(np.float64(time.monotonic()) - now)
-                    next_deadline += PERIOD_S
-                    # print(f"Producer i: {i}, {data}")
-                    break
 
     except KeyboardInterrupt:
         print("\n\nShutting down producer...")
     finally:
         print(f"Total messages sent: {len(send_times)}")
-        # send_delays = send_delays[1:]
-        # print(f"Average send time (s): {np.mean(send_delays)/1e9:.6f}")
-        # print(f"Max send time (s): {np.max(send_delays)/1e9:.6f}, idx: {np.argmax(send_delays)}")
-        # print(f"Std send time (s): {np.std(send_delays)/1e9:.6f}")
-        # print('\n')
 
-        # send_times = send_times[1:]
         send_times_diff = np.diff(send_times)
-        print(f"Average send period (s): {np.mean(send_times_diff):.6f}")
-        print(f"Max send period (s): {np.max(send_times_diff):.6f}, idx: {np.argmax(send_times_diff)}")
-        print(f"Std send period (s): {np.std(send_times_diff):.6f}")
-        save = np.vstack((send_times, np.append(send_times_diff, 0)))
-        np.savetxt(output_file, save.T, delimiter=',', header='send_time,send_period')
+        mean_send_period = np.mean(send_times_diff)*1e6
+        std_send_period = np.std(send_times_diff)*1e6
+        max_send_period = np.max(send_times_diff)*1e6
+        print(f"Average send period (us): {mean_send_period:.4f}")
+        print(f"Max send period (us): {max_send_period:.4f}, idx: {np.argmax(send_times_diff)}")
+        print(f"Std send period (us): {std_send_period:.4f}")
+
+        results = pd.DataFrame({"Metric":["mean", "std", "max"],"Send_period": [mean_send_period, std_send_period, max_send_period]})
+        results.to_csv(output_file, index=False)
         while stream.outlet.have_consumers():
             print("Waiting to be closed...")
             time.sleep(1)
