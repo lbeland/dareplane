@@ -141,12 +141,12 @@ int main(int argc, char *argv[]) {
         "mock_random1",           // stream name (matches consumer config)
         "EEG",                    // stream type
         n_channels,               // number of channels
-        freq,                     // nominal sample rate
+        LSL_IRREGULAR_RATE,       // nominal sample rate
         cft_double64,             // channel format
         "c_producer_uid"          // unique source ID
     );
     
-    lsl_outlet outlet = lsl_create_outlet(info, 0, 360);
+    lsl_outlet outlet = lsl_create_outlet(info, msg_size, msg_size*n_messages);
     printf("LSL outlet created. Waiting for consumer...\n");
     
     // Wait for at least one consumer to connect
@@ -179,9 +179,10 @@ int main(int argc, char *argv[]) {
         }
         lsl_push_chunk_d(outlet, chunk_data, chunk_size);
     }
+    sleep(0.1);
     
     // Main transmission loop
-    for (int i = 0; i < n_messages && keep_running; i++) {
+    for (int i = 0; i < n_messages; i++) {
         now = get_monotonic_time();
         // Fill chunk with current timestamp
         for (int j = 0; j < chunk_size; j++) {

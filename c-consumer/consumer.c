@@ -169,9 +169,10 @@ int main(int argc, char *argv[]) {
     printf("Stream found. Creating inlet...\n");
     
     int num_channels = lsl_get_channel_count(infos[0]);
+    printf("Nominal sample rate inlet: %f\n", lsl_get_nominal_srate(infos[0]));
     printf("Stream has %d channel(s)\n", num_channels);
     
-    lsl_inlet inlet = lsl_create_inlet(infos[0], 360, LSL_NO_PREFERENCE, 1);
+    lsl_inlet inlet = lsl_create_inlet(infos[0], msg_size*n_messages, msg_size, 1);
     
     // Open the stream
     lsl_open_stream(inlet, LSL_FOREVER, NULL);
@@ -192,34 +193,31 @@ int main(int argc, char *argv[]) {
     
     // Main reception loop
     int errcode;
-    double first_timestamp = 0.0;
     
     // Warmup - pull 500 chunks
     while (receive_count < 500) {
-        int num_pulled = lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, LSL_FOREVER, &errcode);
-        if (errcode == 0 && num_pulled > 0) {
-            receive_count++;
-        } else if (errcode != 0) {
+        lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, LSL_FOREVER, &errcode);
+        if (errcode != 0) {
             fprintf(stderr, "Error receiving message during warmup\n");
             break;
         }
+        receive_count++;
     }
 
     receive_count = 0;  // reset count for actual measurement
+    double first_timestamp = 0.0;
 
     while (receive_count < n_messages) {
-        int num_pulled = lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, LSL_FOREVER, &errcode);
+        lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, LSL_FOREVER, &errcode);
         if (errcode != 0) {
             fprintf(stderr, "Error receiving message\n");
             break;
         }
 
-        // Record one timing measurement per pull_chunk call, using only first sample
         double now = get_monotonic_time();
         
         // Extract timestamp from first channel of first sample (last sample would be 29)
         double msg_timestamp = chunk_buffer[0];
-        
         if (receive_count == 0) {
             first_timestamp = msg_timestamp;
         }

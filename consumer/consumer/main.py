@@ -66,9 +66,7 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
     try:
         # Warmup loop - receive 500 samples before actual measurements
         while counter < 500 and not stop_event.is_set():
-            sample, _ = inlet.pull_chunk(timeout=2, max_samples=msg_size)
-            if sample == None:
-                raise RuntimeError("No data received during warmup")
+            sample, _ = inlet.pull_chunk(timeout=pylsl.FOREVER, max_samples=msg_size)
             counter += 1
             # print(f"Warmup message {counter}/500")
 
@@ -76,9 +74,7 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
         counter = 0
 
         while counter < n_messages and not stop_event.is_set():
-            sample, _ = inlet.pull_chunk(timeout=2, max_samples=msg_size)
-            if sample == None:
-                raise RuntimeError("No data received during measurement")
+            sample, _ = inlet.pull_chunk(timeout=pylsl.FOREVER, max_samples=msg_size)
             now = time.monotonic()
             recv_times.append(now)
             data = sample[0][0]  # Extract the first element of the first sample
