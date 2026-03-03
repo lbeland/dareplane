@@ -20,10 +20,12 @@ def main():
     parser.add_argument("--output_file", type=str, default="Producer.csv")
     args = parser.parse_args()
 
-    os.makedirs("results", exist_ok=True)
+    results_folder = "c_results"
+
+    os.makedirs(results_folder, exist_ok=True)
 
     # 1) Start consumer first
-    output_path = REPO_ROOT / "results" / f"{args.num_channels}_{args.msg_size}_Consumer.csv"
+    output_path = REPO_ROOT / results_folder / f"{args.num_channels}_{args.msg_size}_Consumer.csv"
     # if os.path.exists(output_path):
     #     return
 
@@ -39,7 +41,7 @@ def main():
     )
 
     # 2) Start producer with custom parameters via Fire CLI
-    output_path = REPO_ROOT / "results" / f"{args.num_channels}_{args.msg_size}_Producer.csv"
+    output_path = REPO_ROOT / results_folder / f"{args.num_channels}_{args.msg_size}_Producer.csv"
     producer = subprocess.Popen(
         [
             str(PRODUCER_ROOT / "bin" / "producer.bin"),

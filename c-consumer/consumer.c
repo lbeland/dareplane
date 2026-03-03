@@ -97,10 +97,10 @@ void save_results(double first_timestamp) {
         return;
     }
 
-    fprintf(fp, "Metric,Recv_period, Latency, Throughput\n");
-    fprintf(fp, "mean,%.6f, %.6f, %.6f\n", avg_period, avg_latency, throughput);
-    fprintf(fp, "std,%.6f, %.6f, \n", std_period, std_latency);
-    fprintf(fp, "max,%.6f, %.6f, \n", max_diff*1e6, max*1e6);
+    fprintf(fp, "Metric,Recv_period,Latency,Throughput\n");
+    fprintf(fp, "mean,%.6f,%.6f,%.6f\n", avg_period, avg_latency, throughput);
+    fprintf(fp, "std,%.6f,%.6f, \n", std_period, std_latency);
+    fprintf(fp, "max,%.6f,%.6f, \n", max_diff*1e6, max*1e6);
 
     fclose(fp);
     free(recv_times_diff);
