@@ -17,13 +17,13 @@ def main():
     parser.add_argument("--n_messages", type=int, default=1000)
     parser.add_argument("--msg_size", type=int, default=10)
     parser.add_argument("--num_channels", type=int, default=3)
-    parser.add_argument("--output_file", type=str, default="send_times.csv")
+    parser.add_argument("--output_file", type=str, default="Producer.csv")
     args = parser.parse_args()
 
     os.makedirs("results", exist_ok=True)
 
     # 1) Start consumer first
-    output_path = REPO_ROOT / "results" / f"{args.num_channels}_{args.msg_size}_recv_times.csv"
+    output_path = REPO_ROOT / "results" / f"{args.num_channels}_{args.msg_size}_Consumer.csv"
     # if os.path.exists(output_path):
     #     return  # Skip if already exists
     consumer = subprocess.Popen(
@@ -38,11 +38,9 @@ def main():
         cwd=str(CONSUMER_ROOT),
         preexec_fn=os.setsid,
     )
-    # Give consumer time to bind to the LSL stream and prepare
-    time.sleep(2)
 
     # 2) Start producer with custom parameters via Fire CLI
-    output_path = REPO_ROOT / "results" / f"{args.num_channels}_{args.msg_size}_send_times.csv"
+    output_path = REPO_ROOT / "results" / f"{args.num_channels}_{args.msg_size}_Producer.csv"
     producer = subprocess.Popen(
         [
             "python3",
