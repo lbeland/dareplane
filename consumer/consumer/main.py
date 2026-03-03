@@ -10,7 +10,7 @@ from fire import Fire
 from consumer.utils.logging import logger
 
 
-def connect_inlet(config: dict) -> pylsl.StreamInlet:
+def connect_inlet(config: dict, msg_size: int, n_messages: int) -> pylsl.StreamInlet:
     """
     Resolve and connect to an input LSL stream.
 
@@ -27,13 +27,12 @@ def connect_inlet(config: dict) -> pylsl.StreamInlet:
         Connected StreamInlet instance ready for data monitoring.
     """
     stream_name = config["stream_to_query"]["stream"]
-    buffer_size_s = config["stream_to_query"].get("buffer_size_s", 360)
 
     streams = pylsl.resolve_byprop("name", stream_name, timeout=5)
     if not streams:
         raise RuntimeError(f"Could not resolve LSL stream with name '{stream_name}'")
 
-    inlet = pylsl.StreamInlet(streams[0], max_buflen=buffer_size_s)
+    inlet = pylsl.StreamInlet(streams[0], max_buflen=msg_size*n_messages, max_chunklen=msg_size)
     inlet.open_stream(timeout=5)
     logger.debug(f"Connected to stream: {stream_name}")
 
@@ -57,24 +56,29 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
     """
     logger.setLevel(10)
     config = tomllib.load(open("./configs/consumer_config.toml", "rb"))
-    inlet = connect_inlet(config)
+    inlet = connect_inlet(config, msg_size, n_messages)
+    print(f"Nominal rate of inlet: {inlet.info().nominal_srate()}")
 
     process_times = []
     recv_times = []
     counter = 0
-    chunk_counter = 0
     first_timestamp = None
     try:
         # Warmup loop - receive 500 samples before actual measurements
         while counter < 500 and not stop_event.is_set():
-            sample, _ = inlet.pull_chunk(timeout=pylsl.FOREVER, max_samples=msg_size)
+            sample, _ = inlet.pull_chunk(timeout=2, max_samples=msg_size)
+            if sample == None:
+                raise RuntimeError("No data received during warmup")
             counter += 1
+            # print(f"Warmup message {counter}/500")
 
         # Reset counter for actual measurement
         counter = 0
 
         while counter < n_messages and not stop_event.is_set():
-            sample, _ = inlet.pull_chunk(timeout=pylsl.FOREVER, max_samples=msg_size)
+            sample, _ = inlet.pull_chunk(timeout=2, max_samples=msg_size)
+            if sample == None:
+                raise RuntimeError("No data received during measurement")
             now = time.monotonic()
             recv_times.append(now)
             data = sample[0][0]  # Extract the first element of the first sample
@@ -86,8 +90,6 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
     
     except KeyboardInterrupt:
         print("\n\nShutting down consumer...")
-    except Exception as e:
-        raise
     finally:
         if len(recv_times) == 0:
             print("No messages received. Exiting without writing results.")

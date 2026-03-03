@@ -15,7 +15,6 @@ from pathlib import Path, PureWindowsPath
 
 import numpy as np
 import pylsl
-from dareplane_utils.general.time import sleep_s
 import time
 import pandas as pd
 from fire import Fire
@@ -54,6 +53,7 @@ class MockupStream:
         name: str,
         cfg: dict,
         files: list[Path] = [],
+        n_messages: int = None,
     ):
         """
         Parameters
@@ -67,7 +67,10 @@ class MockupStream:
         self.files = files  # can be used if multiple files should be
         self.file_i = 0
         self.outlet = None
-        self.sfreq = cfg["sampling_freq"]
+        self.sfreq = pylsl.IRREGULAR_RATE #cfg["sampling_freq"]
+        self.msg_size = cfg["msg_size"]
+        self.n_messages = n_messages
+
         self.num_channels = cfg.get("n_channels", 1)
         self.buffer = None
 
@@ -106,7 +109,8 @@ class MockupStream:
         )
 
         self.info = info
-        self.outlet = pylsl.StreamOutlet(self.info)
+        self.outlet = pylsl.StreamOutlet(self.info, chunk_size=self.msg_size,max_buffered=self.msg_size*self.n_messages)
+        print(f"Nominal rate of outlet: {self.outlet.get_info().nominal_srate()}")
 
 
 def run_stream(
@@ -149,7 +153,7 @@ def run_stream(
     if msg_size is not None:
         scfg["msg_size"] = msg_size
 
-    stream = MockupStream(name=sname, cfg=scfg)
+    stream = MockupStream(name=sname, cfg=scfg, n_messages=n_messages)
 
     # collect stream names
     stream_name = stream.outlet.get_info().name()
@@ -168,6 +172,7 @@ def run_stream(
             now = time.monotonic()
             stream.outlet.push_chunk(default_data*now)
             counter += 1
+            # print(f"Warmup message {counter}/500")
         
         time.sleep(0.1)
 
