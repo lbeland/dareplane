@@ -17,6 +17,8 @@ def main():
     parser.add_argument("--n_messages", type=int, default=1000)
     parser.add_argument("--msg_size", type=int, default=10)
     parser.add_argument("--num_channels", type=int, default=3)
+    parser.add_argument("--max_buffer_size", type=int, default=10)  # not used
+    parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--output_file", type=str, default="Producer.csv")
     args = parser.parse_args()
 
@@ -26,8 +28,8 @@ def main():
 
     # 1) Start consumer first
     output_path = REPO_ROOT / results_folder / f"{args.num_channels}_{args.msg_size}_Consumer.csv"
-    # if os.path.exists(output_path):
-    #     return
+    if os.path.exists(output_path) and not args.overwrite:
+        return
 
     consumer = subprocess.Popen(
         [
