@@ -22,17 +22,20 @@ def main():
     parser.add_argument("--output_file", type=str, default="Producer.csv")
     args = parser.parse_args()
 
-    os.makedirs("results", exist_ok=True)
+    output_folder = REPO_ROOT / "rt_results"
+
+    os.makedirs(output_folder, exist_ok=True)
 
     # 1) Start consumer first
-    output_path = REPO_ROOT / "results" / f"{args.num_channels}_{args.msg_size}_Consumer.csv"
+    output_path = output_folder / f"{args.num_channels}_{args.msg_size}_Consumer.csv"
 
     if os.path.exists(output_path) and not args.overwrite:
         return  # Skip if already exists
     
     consumer = subprocess.Popen(
         [
-            "python3",
+            "sudo", "chrt", "-f", "99",
+            f"{REPO_ROOT}/venv/bin/python3",
             "-m",
             "consumer.main",
             f"--n_messages={args.n_messages}",
@@ -44,10 +47,11 @@ def main():
     )
 
     # 2) Start producer with custom parameters via Fire CLI
-    output_path = REPO_ROOT / "results" / f"{args.num_channels}_{args.msg_size}_Producer.csv"
+    output_path = output_folder / f"{args.num_channels}_{args.msg_size}_Producer.csv"
     producer = subprocess.Popen(
         [
-            "python3",
+            "sudo", "chrt", "-f", "99",
+            f"{REPO_ROOT}/venv/bin/python3",
             "-m",
             "producer.main",
             f"--n_messages={args.n_messages}",
