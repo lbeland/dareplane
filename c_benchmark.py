@@ -22,12 +22,12 @@ def main():
     parser.add_argument("--output_file", type=str, default="Producer.csv")
     args = parser.parse_args()
 
-    results_folder = "rt_c_results"
+    results_folder = f"{REPO_ROOT}/rt_c_results"
 
     os.makedirs(results_folder, exist_ok=True)
 
     # 1) Start consumer first
-    output_path = REPO_ROOT / results_folder / f"{args.num_channels}_{args.msg_size}_Consumer.csv"
+    output_path = f"{results_folder}/{args.num_channels}_{args.msg_size}_Consumer.csv"
     if os.path.exists(output_path) and not args.overwrite:
         return
 
@@ -44,7 +44,7 @@ def main():
     )
 
     # 2) Start producer with custom parameters via Fire CLI
-    output_path = REPO_ROOT / results_folder / f"{args.num_channels}_{args.msg_size}_Producer.csv"
+    output_path = f"{results_folder}/{args.num_channels}_{args.msg_size}_Producer.csv"
     producer = subprocess.Popen(
         [
             "sudo", "chrt", "-f", "99",
@@ -59,7 +59,7 @@ def main():
     )
     try:
         # 3) Wait for completion
-        consumer.wait(10)
+        consumer.wait(30)
     except KeyboardInterrupt:
         print("Interrupted by user")
     except Exception as e:

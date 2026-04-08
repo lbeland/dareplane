@@ -39,6 +39,11 @@ double get_monotonic_time() {
 }
 
 void save_results(double first_timestamp) {
+    if (receive_count < 2) {
+        printf("Not enough samples to compute consumer statistics.\n");
+        return;
+    }
+
     printf("Total messages processed: %d\n", receive_count);
 
     // Jitter statistics

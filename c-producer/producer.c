@@ -15,7 +15,6 @@
 
 // Configuration
 static int n_messages = 1000;
-static double freq = 1000.0;
 static int n_channels = 1;
 static int msg_size = 1;
 static char output_file[256] = "send_times.csv";
@@ -39,6 +38,11 @@ double get_monotonic_time() {
 }
 
 void save_results() {
+    if (n_messages < 2) {
+        printf("Not enough samples to compute producer statistics.\n");
+        return;
+    }
+
     printf("Total messages sent: %d\n", n_messages);
 
     // Calculate statistics (skip first measurement)

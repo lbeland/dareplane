@@ -35,6 +35,7 @@ def main():
     consumer = subprocess.Popen(
         [
             "sudo", "chrt", "-f", "99",
+            "taskset", "-c", "6",
             f"{REPO_ROOT}/venv/bin/python3",
             "-m",
             "consumer.main",
@@ -51,6 +52,7 @@ def main():
     producer = subprocess.Popen(
         [
             "sudo", "chrt", "-f", "99",
+            "taskset", "-c", "5",
             f"{REPO_ROOT}/venv/bin/python3",
             "-m",
             "producer.main",
@@ -64,7 +66,7 @@ def main():
     )
     try:
         # 3) Wait for completion
-        consumer.wait(10)
+        consumer.wait(30)
     except KeyboardInterrupt:
         print("Interrupted by user")
     except Exception as e:
