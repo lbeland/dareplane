@@ -23,11 +23,11 @@ static char output_file[256] = "send_times.csv";
 static double *send_times = NULL;
 
 // Signal handling for clean shutdown
-static volatile int keep_running = 1;
+static volatile sig_atomic_t keep_running = 1;
 
 void handle_signal(int sig) {
+    (void)sig;
     keep_running = 0;
-    printf("\nCaught signal %d, shutting down...\n", sig);
 }
 
 // Get high-precision monotonic time in seconds
@@ -125,12 +125,21 @@ void parse_args(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
+    int exit_code = 0;
+    lsl_streaminfo info = NULL;
+    lsl_outlet outlet = NULL;
+    double *chunk_data = NULL;
+
     // Parse command line arguments
     parse_args(argc, argv);
     
     // Set up signal handlers
-    signal(SIGINT, handle_signal);
-    signal(SIGTERM, handle_signal);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handle_signal;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
     
     // Allocate timing storage
     send_times = (double *)malloc(n_messages * sizeof(double));
@@ -141,7 +150,7 @@ int main(int argc, char *argv[]) {
     
     // Create LSL outlet
     printf("Creating LSL outlet...\n");
-    lsl_streaminfo info = lsl_create_streaminfo(
+    info = lsl_create_streaminfo(
         "mock_random1",           // stream name (matches consumer config)
         "EEG",                    // stream type
         n_channels,               // number of channels
@@ -149,44 +158,59 @@ int main(int argc, char *argv[]) {
         cft_double64,             // channel format
         "c_producer_uid"          // unique source ID
     );
-    
-    lsl_outlet outlet = lsl_create_outlet(info, msg_size, msg_size*n_messages);
+    if (!info) {
+        fprintf(stderr, "Failed to create LSL streaminfo\n");
+        exit_code = 1;
+        goto cleanup;
+    }
+
+    outlet = lsl_create_outlet(info, msg_size, (int)(ceil(500 + n_messages * msg_size)));
+    if (!outlet) {
+        fprintf(stderr, "Failed to create LSL outlet\n");
+        exit_code = 1;
+        goto cleanup;
+    }
     printf("LSL outlet created. Waiting for consumer...\n");
     
     // Wait for at least one consumer to connect
-    if (!lsl_wait_for_consumers(outlet, 5.0)) {
-        fprintf(stderr, "No consumers connected within 5 seconds\n");
-        lsl_destroy_outlet(outlet);
-        free(send_times);
-        return 1;
+    while (keep_running && !lsl_wait_for_consumers(outlet, 1.0)) {
+        // Poll in short intervals so SIGINT can stop the wait.
+        fprintf(stderr, "Waiting for consumer to connect...\n");
+    }
+    if (!keep_running) {
+        exit_code = 130;
+        goto cleanup;
     }
     
     printf("Consumer connected. Starting data transmission...\n");
     
     // Calculate total data size for msg_size samples with n_channels each
     int chunk_size = msg_size * n_channels;
-    double *chunk_data = (double *)malloc(chunk_size * sizeof(double));
+    chunk_data = (double *)malloc(chunk_size * sizeof(double));
     double now;
     if (!chunk_data) {
         fprintf(stderr, "Memory allocation failed\n");
-        lsl_destroy_outlet(outlet);
-        free(send_times);
-        return 1;
+        exit_code = 1;
+        goto cleanup;
     }
     
     // Warmup
-    for (int i = 0; i < 500; i++) {
+    for (int i = 0; i < 500 && keep_running; i++) {
         now = get_monotonic_time();
         // Fill chunk with current timestamp
         for (int j = 0; j < chunk_size; j++) {
             chunk_data[j] = now;
         }
         lsl_push_chunk_d(outlet, chunk_data, chunk_size);
+        // fprintf(stderr, "Warmup message %d sent\n", i+1);
     }
-    sleep(0.1);
-    
+    if (keep_running) {
+        usleep(10000);
+    }
+
     // Main transmission loop
-    for (int i = 0; i < n_messages; i++) {
+    int sent_count = 0;
+    for (int i = 0; i < n_messages && keep_running; i++) {
         now = get_monotonic_time();
         // Fill chunk with current timestamp
         for (int j = 0; j < chunk_size; j++) {
@@ -194,16 +218,30 @@ int main(int argc, char *argv[]) {
         }
         lsl_push_chunk_d(outlet, chunk_data, chunk_size);
         send_times[i] = now;
+        sent_count++;
     }
-    sleep(2);
+
+    n_messages = sent_count;
+
+    while (keep_running && lsl_have_consumers(outlet)) {
+        fprintf(stderr,"Waiting to be closed...");
+        sleep(1);
+    }
+    goto cleanup;
+
+cleanup:
     // Cleanup
-    lsl_destroy_outlet(outlet);
+    if (outlet) {
+        lsl_destroy_outlet(outlet);
+    }
     free(chunk_data);
-    
+
     // Save results
-    save_results();
+    if (n_messages >= 2) {
+        save_results();
+    }
     free(send_times);
-    
+
     printf("Producer stopped.\n");
-    return 0;
+    return exit_code;
 }

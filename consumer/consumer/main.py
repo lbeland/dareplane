@@ -28,11 +28,13 @@ def connect_inlet(config: dict, msg_size: int, n_messages: int) -> pylsl.StreamI
     """
     stream_name = config["stream_to_query"]["stream"]
 
-    streams = pylsl.resolve_byprop("name", stream_name, timeout=5)
+    streams = pylsl.resolve_byprop("name", stream_name, timeout=pylsl.FOREVER)
     if not streams:
         raise RuntimeError(f"Could not resolve LSL stream with name '{stream_name}'")
 
-    inlet = pylsl.StreamInlet(streams[0], max_buflen=msg_size*n_messages, max_chunklen=msg_size)
+    buffer_size = int(np.ceil(500 + n_messages * msg_size))
+    print(f"Initializing inlet with buffer size: {buffer_size}")
+    inlet = pylsl.StreamInlet(streams[0], max_buflen=buffer_size, max_chunklen=msg_size)
     inlet.open_stream(timeout=5)
     logger.debug(f"Connected to stream: {stream_name}")
 

@@ -143,6 +143,11 @@ void parse_args(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
+    int exit_code = 0;
+    lsl_inlet inlet = NULL;
+    double *chunk_buffer = NULL;
+    double *timestamps = NULL;
+
     // Parse command line arguments
     parse_args(argc, argv);
     
@@ -156,19 +161,27 @@ int main(int argc, char *argv[]) {
 
     if (!recv_times || !process_times) {
         fprintf(stderr, "Memory allocation failed\n");
-        return 1;
+        exit_code = 1;
+        goto cleanup;
     }
     
     // Find and connect to LSL stream
     printf("Waiting for LSL stream 'mock_random1'...\n");
     lsl_streaminfo infos[1];
-    int n_found = lsl_resolve_byprop(infos, 1, "name", "mock_random1", 1, LSL_FOREVER);
-    
+    int n_found = 0;
+    while (keep_running && n_found == 0) {
+        n_found = lsl_resolve_byprop(infos, 1, "name", "mock_random1", 1, 1.0);
+    }
+
+    if (!keep_running) {
+        exit_code = 130;
+        goto cleanup;
+    }
+
     if (n_found == 0) {
         fprintf(stderr, "Failed to find LSL stream\n");
-        free(recv_times);
-        free(process_times);
-        return 1;
+        exit_code = 1;
+        goto cleanup;
     }
     
     printf("Stream found. Creating inlet...\n");
@@ -177,7 +190,13 @@ int main(int argc, char *argv[]) {
     printf("Nominal sample rate inlet: %f\n", lsl_get_nominal_srate(infos[0]));
     printf("Stream has %d channel(s)\n", num_channels);
     
-    lsl_inlet inlet = lsl_create_inlet(infos[0], msg_size*n_messages, msg_size, 1);
+    inlet = lsl_create_inlet(infos[0], (int)(ceil(500 + n_messages * msg_size)), msg_size, 1);
+
+    if (!inlet) {
+        fprintf(stderr, "Failed to create inlet\n");
+        exit_code = 1;
+        goto cleanup;
+    }
     
     // Open the stream
     lsl_open_stream(inlet, LSL_FOREVER, NULL);
@@ -186,37 +205,48 @@ int main(int argc, char *argv[]) {
     
     // Allocate buffer for receiving chunks of msg_size samples * num_channels values each
     int chunk_size = msg_size * num_channels;
-    double *chunk_buffer = (double *)malloc(chunk_size * sizeof(double));
-    double *timestamps = (double *)malloc(msg_size * sizeof(double));
+    chunk_buffer = (double *)malloc(chunk_size * sizeof(double));
+    timestamps = (double *)malloc(msg_size * sizeof(double));
     if (!chunk_buffer || !timestamps) {
         fprintf(stderr, "Memory allocation failed\n");
-        lsl_destroy_inlet(inlet);
-        free(recv_times);
-        free(process_times);
-        return 1;
+        exit_code = 1;
+        goto cleanup;
     }
     
     // Main reception loop
     int errcode;
     
     // Warmup - pull 500 chunks
-    while (receive_count < 500) {
-        lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, LSL_FOREVER, &errcode);
+    while (keep_running && receive_count < 500) {
+        unsigned long pulled = lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, 0.1, &errcode);
         if (errcode != 0) {
             fprintf(stderr, "Error receiving message during warmup\n");
-            break;
+            exit_code = 1;
+            goto cleanup;
+        }
+        if (pulled == 0) {
+            continue;
         }
         receive_count++;
+    }
+
+    if (!keep_running) {
+        exit_code = 130;
+        goto cleanup;
     }
 
     receive_count = 0;  // reset count for actual measurement
     double first_timestamp = 0.0;
 
-    while (receive_count < n_messages) {
-        lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, LSL_FOREVER, &errcode);
+    while (keep_running && receive_count < n_messages) {
+        unsigned long pulled = lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, 0.1, &errcode);
         if (errcode != 0) {
             fprintf(stderr, "Error receiving message\n");
-            break;
+            exit_code = 1;
+            goto cleanup;
+        }
+        if (pulled == 0) {
+            continue;
         }
 
         double now = get_monotonic_time();
@@ -233,17 +263,26 @@ int main(int argc, char *argv[]) {
         receive_count++;
     }
 
+    if (!keep_running) {
+        exit_code = 130;
+    }
+
+cleanup:
     // Cleanup
-    lsl_close_stream(inlet);
-    lsl_destroy_inlet(inlet);
+    if (inlet) {
+        lsl_close_stream(inlet);
+        lsl_destroy_inlet(inlet);
+    }
     free(chunk_buffer);
     free(timestamps);
-    
+
     // Save results
-    save_results(first_timestamp);
+    if (receive_count >= 2) {
+        save_results(first_timestamp);
+    }
     free(recv_times);
     free(process_times);
-    
+
     printf("Consumer stopped.\n");
-    return 0;
+    return exit_code;
 }

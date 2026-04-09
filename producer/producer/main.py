@@ -109,7 +109,9 @@ class MockupStream:
         )
 
         self.info = info
-        self.outlet = pylsl.StreamOutlet(self.info, chunk_size=self.msg_size,max_buffered=self.msg_size*self.n_messages)
+        buffer_size = int(np.ceil(500 + self.n_messages*self.msg_size))
+        print(f"Initializing outlet with buffer size: {buffer_size}")
+        self.outlet = pylsl.StreamOutlet(self.info, chunk_size=self.msg_size,max_buffered=buffer_size)
         print(f"Nominal rate of outlet: {self.outlet.get_info().nominal_srate()}")
 
 
@@ -164,7 +166,9 @@ def run_stream(
     try:
 
         default_data = np.ones((msg_size,n_channels), dtype=np.float64)
-        assert stream.outlet.wait_for_consumers(5), "No consumers connected within 5s"
+        assert stream.outlet.wait_for_consumers(20), "No consumers connected within 20s"
+
+        time.sleep(1)
 
         # Warmup loop to stabilize the stream before measurements
         counter = 0
@@ -174,7 +178,7 @@ def run_stream(
             counter += 1
             # print(f"Warmup message {counter}/500")
         
-        time.sleep(0.1)
+        # time.sleep(0.01)
 
         for i in range(n_messages):
             now = time.monotonic()
@@ -198,7 +202,7 @@ def run_stream(
 
         results = pd.DataFrame({"Metric":["mean", "std", "max"],"Send_period": [mean_send_period, std_send_period, max_send_period]})
         results.to_csv(output_file, index=False)
-        while stream.outlet.have_consumers():
+        while stream.outlet.have_consumers() and not stop_event.is_set():
             print("Waiting to be closed...")
             time.sleep(1)
         
