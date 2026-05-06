@@ -16,7 +16,7 @@ OBJ := $(OBJ_DIR)/consumer.o
 # On Linux, LSL is typically in /usr/local or system paths
 # On macOS with Homebrew, it's in /opt/homebrew
 CPPFLAGS := -I../dp-c-sdl2-example/include
-CFLAGS   := -Wall -O3 -march=native
+CFLAGS   := -Wall -O2 -march=native
 LDFLAGS  := -L/usr/local/lib -L/opt/homebrew/lib
 LDLIBS   := -llsl -lm -lpthread
 
