@@ -147,6 +147,7 @@ int main(int argc, char *argv[]) {
     lsl_inlet inlet = NULL;
     double *chunk_buffer = NULL;
     double *timestamps = NULL;
+    double first_timestamp = 0.0;
 
     // Parse command line arguments
     parse_args(argc, argv);
@@ -190,7 +191,7 @@ int main(int argc, char *argv[]) {
     printf("Nominal sample rate inlet: %f\n", lsl_get_nominal_srate(infos[0]));
     printf("Stream has %d channel(s)\n", num_channels);
     
-    inlet = lsl_create_inlet(infos[0], (int)(ceil(500 + n_messages * msg_size)), msg_size, 1);
+    inlet = lsl_create_inlet(infos[0], (int)(1000 * msg_size), msg_size, 1);
 
     if (!inlet) {
         fprintf(stderr, "Failed to create inlet\n");
@@ -236,7 +237,6 @@ int main(int argc, char *argv[]) {
     }
 
     receive_count = 0;  // reset count for actual measurement
-    double first_timestamp = 0.0;
 
     while (keep_running && receive_count < n_messages) {
         unsigned long pulled = lsl_pull_chunk_d(inlet, chunk_buffer, timestamps, chunk_size, msg_size, 0.1, &errcode);

@@ -32,7 +32,7 @@ def connect_inlet(config: dict, msg_size: int, n_messages: int) -> pylsl.StreamI
     if not streams:
         raise RuntimeError(f"Could not resolve LSL stream with name '{stream_name}'")
 
-    buffer_size = int(np.ceil(500 + n_messages * msg_size))
+    buffer_size = int(1000 * msg_size)
     print(f"Initializing inlet with buffer size: {buffer_size}")
     inlet = pylsl.StreamInlet(streams[0], max_buflen=buffer_size, max_chunklen=msg_size)
     inlet.open_stream(timeout=5)
@@ -108,6 +108,8 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
         mean_latency = np.mean(process_times)*1e6
         std_latency = np.std(process_times)*1e6
         max_latency = np.max(process_times)*1e6
+
+        print(f"Average latency (us): {mean_latency:.4f}")
 
         throughput = n_messages / (recv_times[-1] - first_timestamp)/1e3
         print(f"Throughput (msg/ms): {n_messages}/{(recv_times[-1] - first_timestamp)*1e3:.4f}ms={throughput:.2f}")

@@ -17,6 +17,7 @@
 static int n_messages = 1000;
 static int n_channels = 1;
 static int msg_size = 1;
+static float t_wait = 0.0001;
 static char output_file[256] = "send_times.csv";
 
 // Timing storage
@@ -164,7 +165,7 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    outlet = lsl_create_outlet(info, msg_size, (int)(ceil(500 + n_messages * msg_size)));
+    outlet = lsl_create_outlet(info, msg_size, (int)(1000 * msg_size));
     if (!outlet) {
         fprintf(stderr, "Failed to create LSL outlet\n");
         exit_code = 1;
@@ -211,6 +212,9 @@ int main(int argc, char *argv[]) {
     // Main transmission loop
     int sent_count = 0;
     for (int i = 0; i < n_messages && keep_running; i++) {
+        if (t_wait > 0) {
+            usleep(t_wait * 1e6);  // Let Consumer process last message
+        }
         now = get_monotonic_time();
         // Fill chunk with current timestamp
         for (int j = 0; j < chunk_size; j++) {

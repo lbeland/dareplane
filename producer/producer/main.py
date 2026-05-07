@@ -109,7 +109,7 @@ class MockupStream:
         )
 
         self.info = info
-        buffer_size = int(np.ceil(500 + self.n_messages*self.msg_size))
+        buffer_size = int(1000*self.msg_size)
         print(f"Initializing outlet with buffer size: {buffer_size}")
         self.outlet = pylsl.StreamOutlet(self.info, chunk_size=self.msg_size,max_buffered=buffer_size)
         print(f"Nominal rate of outlet: {self.outlet.get_info().nominal_srate()}")
@@ -121,6 +121,7 @@ def run_stream(
     n_messages: int = None,
     n_channels: int = None,
     msg_size: int=None,
+    t_wait: float = None,
     output_file: str = "send_times.csv",
 ) -> int:
     """
@@ -136,7 +137,7 @@ def run_stream(
         Number of channels (overrides config)
     msg_size : int, optional
         Size of each message in samples (overrides config)
-
+    t_wait : float, optional
     Returns
     -------
     int
@@ -181,6 +182,8 @@ def run_stream(
         # time.sleep(0.01)
 
         for i in range(n_messages):
+            if t_wait > 0:
+                time.sleep(t_wait)  # Let Consumer process last message
             now = time.monotonic()
             stream.outlet.push_chunk(default_data * now)
             send_times.append(now)
