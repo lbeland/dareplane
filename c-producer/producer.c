@@ -97,9 +97,10 @@ void parse_args(int argc, char *argv[]) {
         { "msg_size", required_argument, 0, 'm' },
         { "num_channels", required_argument, 0, 'c' },
         { "output_file", required_argument, 0, 'o' },
+        { "t_wait", required_argument, 0, 't' },
         0
     };
-    while ((opt = getopt_long(argc, argv, "n:m:c:o:", long_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "n:m:c:o:t:", long_options, NULL)) != -1) {
         switch (opt) {
             case 'n':
                 n_messages = atoi(optarg);
@@ -114,12 +115,16 @@ void parse_args(int argc, char *argv[]) {
                 strncpy(output_file, optarg, sizeof(output_file) - 1);
                 output_file[sizeof(output_file) - 1] = '\0';
                 break;
+            case 't':
+                t_wait = atof(optarg);
+                break;
             default:
                 fprintf(stderr, "Usage: %s [options]\n", argv[0]);
                 fprintf(stderr, "  -n n_messages (default: 1000)\n");
                 fprintf(stderr, "  -m msg_size (default: 1)\n");
                 fprintf(stderr, "  -c num_channels (default: 1)\n");
                 fprintf(stderr, "  -o output_file (default: send_times.csv)\n");
+                fprintf(stderr, "  -t t_wait (default: 0.0001)\n");
                 return;
         }
     }
