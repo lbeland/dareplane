@@ -108,6 +108,43 @@ void save_results(double first_timestamp) {
     fprintf(fp, "max,%.6f,%.6f, \n", max_diff*1e6, max*1e6);
 
     fclose(fp);
+
+    // Save raw per-message process (latency) times, matching the
+    // {base}_process_times.csv convention used by the other frameworks'
+    // consumers. output_file here is already the full "..._Consumer.csv"
+    // path (dareplane's c_benchmark.py appends that suffix itself before
+    // passing --output_file, unlike e.g. zeromq's, which passes a bare
+    // base) — strip it back off so the sibling file doesn't end up named
+    // "..._Consumer_process_times.csv".
+    char base[256];
+    strncpy(base, output_file, sizeof(base) - 1);
+    base[sizeof(base) - 1] = '\0';
+    size_t base_len = strlen(base);
+    const char *consumer_suffix = "_Consumer.csv";
+    size_t consumer_suffix_len = strlen(consumer_suffix);
+    if (base_len > consumer_suffix_len &&
+        strcmp(base + base_len - consumer_suffix_len, consumer_suffix) == 0) {
+        base[base_len - consumer_suffix_len] = '\0';
+    } else {
+        const char *csv_ext = ".csv";
+        size_t csv_ext_len = strlen(csv_ext);
+        if (base_len > csv_ext_len &&
+            strcmp(base + base_len - csv_ext_len, csv_ext) == 0) {
+            base[base_len - csv_ext_len] = '\0';
+        }
+    }
+
+    char process_times_file[300];
+    snprintf(process_times_file, sizeof(process_times_file), "%s_process_times.csv", base);
+    FILE *fp2 = fopen(process_times_file, "w");
+    if (fp2 == NULL) {
+        fprintf(stderr, "Error opening file %s\n", process_times_file);
+    } else {
+        for (int i = 0; i < receive_count; i++) {
+            fprintf(fp2, "%.17f\n", process_times[i]);
+        }
+        fclose(fp2);
+    }
     free(recv_times_diff);
 }
 

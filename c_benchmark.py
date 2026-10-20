@@ -35,7 +35,7 @@ def main():
     consumer = subprocess.Popen(
         [
             "sudo", "chrt", "-f", "99",
-            "taskset", "-c", "6",
+            "taskset", "-c", "7",
             str(CONSUMER_ROOT / "bin" / "consumer.bin"),
             f"--n_messages={args.n_messages}",
             f"--msg_size={args.msg_size}",
@@ -50,7 +50,7 @@ def main():
     producer = subprocess.Popen(
         [
             "sudo", "chrt", "-f", "99",
-            "taskset", "-c", "5",
+            "taskset", "-c", "6",
             str(PRODUCER_ROOT / "bin" / "producer.bin"),
             f"--n_messages={args.n_messages}",
             f"--num_channels={args.num_channels}",

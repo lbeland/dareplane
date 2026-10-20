@@ -121,6 +121,15 @@ def main(stop_event: threading.Event = threading.Event(), n_messages=1000, msg_s
 
         results.to_csv(output_file, index=False)
         inlet.close_stream()
+        # Persist per-packet process_times for post-processing
+        try:
+            base = output_file[:-4] if output_file.lower().endswith('.csv') else output_file
+            proc_path = f"{base}_process_times.csv"
+            with open(proc_path, "w") as f:
+                for v in process_times:
+                    f.write(f"{v}\n")
+        except Exception:
+            pass
         print("Consumer stopped.")
 
 
